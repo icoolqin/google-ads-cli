@@ -1,0 +1,54 @@
+name: Bug report
+description: Report reproducible incorrect behavior in the CLI or bundled skill.
+title: "[Bug]: "
+labels:
+  - "bug"
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. Remove all credentials, customer data, and sensitive account identifiers before submitting. Report security issues privately as described in SECURITY.md.
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened?
+      description: Describe the actual behavior and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: Provide the smallest sanitized command or manifest that reproduces the issue.
+      render: shell
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: CLI version
+      description: Paste the output of `gads --version`.
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Operating system and Python version.
+    validations:
+      required: true
+  - type: textarea
+    id: error
+    attributes:
+      label: Sanitized error output
+      description: Remove tokens, customer data, and sensitive account identifiers.
+      render: text
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety check
+      options:
+        - label: I removed all credentials and sensitive customer data.
+          required: true
+        - label: This is not a privately reportable security vulnerability.
+          required: true

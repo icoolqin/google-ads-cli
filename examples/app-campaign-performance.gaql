@@ -1,0 +1,16 @@
+SELECT
+  campaign.id,
+  campaign.name,
+  campaign.status,
+  campaign.primary_status,
+  campaign.advertising_channel_sub_type,
+  metrics.impressions,
+  metrics.clicks,
+  metrics.cost_micros,
+  metrics.conversions,
+  metrics.conversions_value
+FROM campaign
+WHERE campaign.advertising_channel_type = 'MULTI_CHANNEL'
+  AND campaign.status != 'REMOVED'
+  AND segments.date DURING LAST_30_DAYS
+ORDER BY metrics.cost_micros DESC

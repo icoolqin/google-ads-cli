@@ -1,0 +1,13 @@
+label: pause-one-campaign
+customer_id: "1234567890"
+api_version: v25
+partial_failure: false
+response_content_type: RESOURCE_NAME_ONLY
+operations:
+  - resource: campaign
+    action: update
+    data:
+      resourceName: customers/1234567890/campaigns/111
+      status: PAUSED
+    update_mask:
+      - status

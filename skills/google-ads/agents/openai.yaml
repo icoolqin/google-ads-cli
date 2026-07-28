@@ -1,0 +1,4 @@
+interface:
+  display_name: "Google Ads Operator"
+  short_description: "Safely manage Google Ads campaigns and reports"
+  default_prompt: "Use $google-ads to inspect my account and safely manage Google Ads campaigns."

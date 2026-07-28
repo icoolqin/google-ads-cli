@@ -1,0 +1,85 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "google-ads-cli"
+version = "0.1.0"
+description = "A safe, agent-friendly command-line interface for the Google Ads API."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+keywords = ["google-ads", "google-ads-api", "gaql", "advertising", "cli", "codex"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Information Technology",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Topic :: Office/Business",
+  "Typing :: Typed",
+]
+dependencies = [
+  "google-ads>=31.2.0,<32",
+  "google-auth-oauthlib>=1.2.2,<2",
+  "platformdirs>=4.3,<5",
+  "Pillow>=11.1,<13",
+  "PyYAML>=6.0.2,<7",
+  "rich>=13.9,<15",
+  "typer>=0.16,<1",
+]
+
+[project.scripts]
+gads = "google_ads_cli.cli:main"
+
+[dependency-groups]
+dev = [
+  "pytest>=8.3,<9",
+  "pytest-cov>=6,<8",
+  "ruff>=0.11,<1",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/google_ads_cli"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+  "/.github",
+  "/examples",
+  "/scripts",
+  "/skills",
+  "/src",
+  "/tests",
+  "/CHANGELOG.md",
+  "/CODE_OF_CONDUCT.md",
+  "/CONTRIBUTING.md",
+  "/LICENSE",
+  "/README.md",
+  "/README.zh-CN.md",
+  "/SECURITY.md",
+  "/pyproject.toml",
+  "/uv.lock",
+]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+
+[tool.ruff.lint.per-file-ignores]
+"src/google_ads_cli/cli.py" = ["B008"]
+
+[tool.ruff.format]
+quote-style = "double"
