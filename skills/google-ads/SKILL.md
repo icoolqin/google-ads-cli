@@ -57,7 +57,9 @@ Treat `--execute` as the only live-write switch. Never use it while exploring sy
 - Preserve atomic behavior (`partial_failure: false`) for dependent campaign setup unless
   partial success is explicitly wanted and individually handled.
 - Keep credentials outside the repository. Never print or commit developer tokens, OAuth
-  secrets, refresh tokens, private keys, or image bytes.
+  secrets, refresh tokens, private keys, credential YAML/JSON, or image bytes. Never open a
+  credential file just to diagnose access; use `gads config show`, `gads auth test`, and
+  `gads accounts accessible`.
 - Capture Google Ads `request_id` from failures. The CLI records executed and validate-only
   mutation summaries in its local audit JSONL.
 - Use a test account for integration tests when available. Do not manufacture production

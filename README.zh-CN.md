@@ -117,8 +117,14 @@ uv run gads --help
 ### 1. 获取 developer token
 
 登录 Google Ads **经理账号**，打开
-[API Center](https://ads.google.com/aw/apicenter)，申请 developer token。开发配置时可以
-先使用测试访问权限；操作正式账号需要相应的正式访问级别。
+[API Center](https://ads.google.com/aw/apicenter)，申请 developer token。这里的“经理账号”
+是账号类型（MCC），不是客户账号中的管理员角色。如果页面提示 API Center 只对经理账号
+开放，请在 Google Ads 账号选择器中切换到 MCC，或先创建一个经理账号。
+
+新申请可能会被自动批准为 Explorer 访问权限；否则会先获得测试账号访问权限。Explorer、
+Basic 和 Standard 可以在各自限额内访问正式账号。具体以 Google 当前的
+[developer token 访问权限说明](https://developers.google.com/google-ads/api/docs/api-policy/developer-token)
+为准。
 
 ### 2. 创建 OAuth 桌面应用
 
@@ -129,6 +135,11 @@ uv run gads --help
 3. 配置 OAuth consent screen。
 4. 创建应用类型为 **Desktop app** 的 OAuth 客户端。
 5. 下载客户端 JSON，并把它放在本仓库之外。
+
+OAuth 应用的发布状态为 **Testing** 时，需要在 **Google Auth Platform → Audience →
+Test users** 中加入每个将要授权 CLI 的 Google 用户。MCC 管理员不会自动成为 OAuth
+测试用户。Ads scope 的测试授权（包括离线 refresh token）会在 7 天后过期；需要长期稳定
+运行时，应把应用发布为 Production，并在 Google 要求时完成验证。
 
 控制台步骤如有变化，请参考 Google 的
 [OAuth 指南](https://developers.google.com/google-ads/api/docs/oauth/overview)。
@@ -145,11 +156,21 @@ gads auth login \
 ```
 
 developer token 会通过隐藏输入框读取。命令会打开 Google OAuth 页面，创建权限为
-`0600` 的凭证 YAML，并创建一个不含密钥的 CLI profile。
+`0600` 的凭证 YAML，并创建一个不含密钥的 CLI profile。登录页会强制显示账号选择器；
+请选择能够直接访问 `--login-customer-id` 所指定 MCC 的 Google 用户。
 
 - `customer_id` 是实际要管理 Campaign 和数据的客户账号。
 - `login_customer_id` 是用来访问该客户账号的经理账号；直接访问客户账号时可以省略。
 - 可以输入带连字符的 ID，CLI 会规范化为 10 位数字。
+
+请区分下面四种身份：
+
+| 项目 | 作用 |
+| --- | --- |
+| developer token 所有者 | 在 API Center 签发 token 的 MCC。 |
+| OAuth 客户端 | Google Cloud 项目中的 Desktop app。 |
+| OAuth Google 用户 | 实际同意授权的人，必须拥有相应 Google Ads 权限。 |
+| login/target customer | 请求头中的 MCC，以及真正查询数据的客户账号。 |
 
 无法自动打开浏览器时，加上 `--no-browser`。在能够访问同一本地回调地址的浏览器中打开
 命令打印的 URL 并完成授权。
@@ -159,12 +180,12 @@ developer token 会通过隐藏输入框读取。命令会打开 Google OAuth �
 ```bash
 gads auth test
 gads accounts accessible
-gads accounts hierarchy
+gads accounts hierarchy --manager-id 1111111111
 gads accounts show
 ```
 
 `accounts accessible` 只列出直接访问的账号；经理账号下面的客户账号请用
-`accounts hierarchy` 查看。
+`accounts hierarchy` 查看，并显式传入经理账号 ID，不要让它从客户账号 profile 开始。
 
 ## 第一次读取数据
 
@@ -387,10 +408,13 @@ Google 授权、developer token 访问级别或账号权限。
 
 | 现象 | 常见原因和下一步 |
 | --- | --- |
+| “API Center is only available to manager accounts” | 当前选中的是客户账号；请切换或创建经理账号（MCC）。客户账号的管理员权限不等于经理账号。 |
+| OAuth `403 access_denied`，应用仍在测试 | 在 Google Auth Platform → Audience → Test users 添加当前 Google 用户，保存后重试。 |
 | `DEVELOPER_TOKEN_NOT_APPROVED` | token 无权访问该正式账号；检查 API Center 中的访问级别。 |
-| `USER_PERMISSION_DENIED` | OAuth 用户无权访问所选客户账号或经理账号。 |
+| `USER_PERMISSION_DENIED` | OAuth 用户无权访问所选客户账号或经理账号；重新授权并选择正确用户，`gads auth test` 也会检查 MCC 的直接访问权限。 |
 | login-customer 相关错误 | `login_customer_id` 不是该客户账号的上级经理，或两个 ID 填反了。 |
 | OAuth `invalid_grant` | refresh token 被撤销、OAuth 客户端发生变化或授权过期；重新运行 `gads auth login`。 |
+| `ServiceUnavailable`、DNS 或 “No route to host” | 检查 VPN、代理、防火墙和 IPv6 路由。macOS 会自动使用系统解析器；其他环境可尝试 `GRPC_DNS_RESOLVER=native gads auth test`。 |
 | “Missing customer ID” | 在命令前传入 `--customer-id`，或把它保存到当前 profile。 |
 | 全局参数无法识别 | 把 `--profile`、`--customer-id`、`--api-version` 和 `--format` 放在命令组之前。 |
 | 本地计划成功但 Google 校验失败 | 查看结构化错误和 `request_id`，再用 `gads fields describe` 检查报错字段。 |
@@ -423,6 +447,7 @@ uv sync --dev
 uv run ruff check .
 uv run ruff format --check .
 uv run pytest --cov=google_ads_cli --cov-fail-under=55
+git ls-files -z | xargs -0 uv run detect-secrets-hook --baseline .secrets.baseline
 uv build
 ```
 

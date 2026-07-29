@@ -6,6 +6,17 @@ Notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- CI secret scanning for all tracked files
+- Targeted diagnostics for wrong OAuth users, expired OAuth grants, and transport failures
+
+### Changed
+
+- OAuth login always shows Google's account picker to prevent accidental account reuse
+- macOS uses the native DNS resolver for more reliable operation through VPN/TUN networks
+- Setup documentation now distinguishes MCC, OAuth user, OAuth client, and target customer
+
 ## [0.1.0] - 2026-07-28
 
 ### Added

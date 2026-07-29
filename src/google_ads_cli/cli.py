@@ -4,11 +4,20 @@ import getpass
 import json
 import os
 import re
+import sys
 from pathlib import Path
 from typing import Any
 
+# macOS VPN/TUN clients commonly expose split-DNS or synthetic IPv4 answers only
+# through the system resolver. gRPC's c-ares resolver can bypass that configuration
+# and choose an unreachable IPv6 address instead.
+if sys.platform == "darwin":
+    os.environ.setdefault("GRPC_DNS_RESOLVER", "native")
+
 import typer
 from google.ads.googleads.errors import GoogleAdsException
+from google.api_core.exceptions import GoogleAPICallError
+from google.auth.exceptions import RefreshError
 from rich.console import Console
 
 from google_ads_cli import __version__
@@ -26,7 +35,12 @@ from google_ads_cli.config import (
     default_config_path,
     default_credentials_path,
 )
-from google_ads_cli.errors import CliError, google_ads_error_details
+from google_ads_cli.errors import (
+    CliError,
+    google_ads_error_details,
+    google_api_error_details,
+    oauth_refresh_error_details,
+)
 from google_ads_cli.mutations import (
     MutationOperation,
     MutationPlan,
@@ -321,7 +335,28 @@ def auth_test(ctx: typer.Context) -> None:
     runtime = _runtime(ctx)
     session = create_session(runtime)
     customer_service = session.client.get_service("CustomerService", version=session.api_version)
-    accessible = customer_service.list_accessible_customers().resource_names
+    accessible = list(customer_service.list_accessible_customers().resource_names)
+    accessible_ids = {
+        normalize_customer_id(resource_name.rsplit("/", 1)[-1]) for resource_name in accessible
+    }
+    raw_login_customer_id = getattr(session.client, "login_customer_id", None)
+    login_customer_id = (
+        normalize_customer_id(raw_login_customer_id) if raw_login_customer_id else None
+    )
+    if login_customer_id and login_customer_id not in accessible_ids:
+        raise CliError(
+            "The OAuth Google user cannot directly access the configured login customer "
+            f"`{login_customer_id}`. Re-run `gads auth login` and choose a user with access "
+            "to that manager account.",
+            details={
+                "configured_login_customer_id": login_customer_id,
+                "directly_accessible_customer_ids": sorted(accessible_ids),
+                "next_step": (
+                    "If the OAuth app is in Testing, first add the intended Google user "
+                    "under Google Auth Platform > Audience > Test users."
+                ),
+            },
+        )
     query = (
         "SELECT customer.id, customer.descriptive_name, customer.currency_code, "
         "customer.time_zone, customer.test_account, customer.manager FROM customer"
@@ -333,7 +368,9 @@ def auth_test(ctx: typer.Context) -> None:
             "profile": session.profile_name,
             "api_version": session.api_version,
             "selected_customer_id": session.customer_id,
-            "directly_accessible_customers": list(accessible),
+            "login_customer_id": login_customer_id,
+            "login_customer_accessible": True if login_customer_id else None,
+            "directly_accessible_customers": accessible,
             "selected_customer": rows,
         }
     )
@@ -994,6 +1031,16 @@ def main() -> None:
         details = google_ads_error_details(error)
         Console(stderr=True, no_color="NO_COLOR" in os.environ).print(
             json.dumps(details, ensure_ascii=False, indent=2)
+        )
+        raise SystemExit(1) from error
+    except GoogleAPICallError as error:
+        Console(stderr=True, no_color="NO_COLOR" in os.environ).print(
+            json.dumps(google_api_error_details(error), ensure_ascii=False, indent=2)
+        )
+        raise SystemExit(1) from error
+    except RefreshError as error:
+        Console(stderr=True, no_color="NO_COLOR" in os.environ).print(
+            json.dumps(oauth_refresh_error_details(error), ensure_ascii=False, indent=2)
         )
         raise SystemExit(1) from error
     except CliError as error:

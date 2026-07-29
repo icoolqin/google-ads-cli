@@ -119,9 +119,15 @@ uv run gads --help
 ### 1. Get a developer token
 
 Sign in to a Google Ads **manager account**, open its
-[API Center](https://ads.google.com/aw/apicenter), and apply for a developer token. A token
-with test access can be used while building the setup; production accounts require an
-appropriate production access level.
+[API Center](https://ads.google.com/aw/apicenter), and apply for a developer token. “Manager
+account” is an account type (MCC), not an administrator role on a client account. If API
+Center says it is available only to manager accounts, switch the Google Ads account selector
+to an MCC or create one first.
+
+New applications may receive Explorer access automatically; otherwise they begin with test
+account access. Explorer, Basic, and Standard access can call production accounts within
+their respective limits. See Google's current
+[developer-token access documentation](https://developers.google.com/google-ads/api/docs/api-policy/developer-token).
 
 ### 2. Create an OAuth Desktop app
 
@@ -132,6 +138,13 @@ In Google Cloud:
 3. Configure the OAuth consent screen.
 4. Create an OAuth client with application type **Desktop app**.
 5. Download the client JSON and keep it outside this repository.
+
+When the OAuth app publishing status is **Testing**, add every Google user that will authorize
+the CLI under **Google Auth Platform → Audience → Test users**. Being an MCC administrator
+does not automatically make a user an OAuth test user. Testing authorizations for the Ads
+scope expire after seven days, including offline refresh tokens; publish the app to
+Production when you need durable authorization and complete verification if Google requires
+it.
 
 Google's [OAuth guide](https://developers.google.com/google-ads/api/docs/oauth/overview)
 describes the current console flow.
@@ -148,12 +161,23 @@ gads auth login \
 ```
 
 The developer token is requested through a hidden prompt. The command opens Google's OAuth
-page, writes a credentials YAML with file mode `0600`, and creates a non-secret CLI profile.
+page with the account picker enabled, writes a credentials YAML with file mode `0600`, and
+creates a non-secret CLI profile. Choose a Google user that can directly access the MCC
+specified by `--login-customer-id`.
 
 - `customer_id` is the client account whose campaigns and data you manage.
 - `login_customer_id` is the manager account used to reach that client. Omit it when you
   access the client directly.
 - Hyphenated IDs are accepted and normalized to 10 digits.
+
+Keep these four identities separate:
+
+| Item | Purpose |
+| --- | --- |
+| Developer-token owner | The MCC whose API Center issued the token. |
+| OAuth client | The Desktop app in a Google Cloud project. |
+| OAuth Google user | The human user granting access; it must have Google Ads access. |
+| Login/target customers | The MCC request header and the client whose data is queried. |
 
 For a shell that cannot open a browser, add `--no-browser`, open the printed URL on a browser
 that can reach the same local callback, and complete the flow.
@@ -163,12 +187,12 @@ that can reach the same local callback, and complete the flow.
 ```bash
 gads auth test
 gads accounts accessible
-gads accounts hierarchy
+gads accounts hierarchy --manager-id 1111111111
 gads accounts show
 ```
 
 `accounts accessible` lists direct access only. Use `accounts hierarchy` to find clients
-beneath a manager.
+beneath a manager, and seed it with that manager's ID rather than the client profile ID.
 
 ## Your first read
 
@@ -396,10 +420,13 @@ permissions.
 
 | Symptom | Likely cause and next check |
 | --- | --- |
+| “API Center is only available to manager accounts” | The selected Google Ads account is a client account. Switch to or create a manager account (MCC); client-account admin permission is not the same thing. |
+| OAuth `403 access_denied`, app is being tested | Add the Google user under Google Auth Platform → Audience → Test users, save, then retry. |
 | `DEVELOPER_TOKEN_NOT_APPROVED` | The token cannot access that production account. Check its API Center access level. |
-| `USER_PERMISSION_DENIED` | The OAuth user cannot access the selected client or manager. |
+| `USER_PERMISSION_DENIED` | The OAuth user cannot access the selected client or manager. Re-run login and choose the intended user; `gads auth test` also checks direct MCC access. |
 | Login-customer error | `login_customer_id` is not a manager above the client, or the IDs were reversed. |
 | OAuth `invalid_grant` | The refresh token was revoked, the OAuth client changed, or the consent grant expired. Run `gads auth login` again. |
+| `ServiceUnavailable`, DNS, or “No route to host” | Check VPN/proxy/firewall and IPv6 routing. macOS automatically uses the system resolver; elsewhere try `GRPC_DNS_RESOLVER=native gads auth test`. |
 | “Missing customer ID” | Pass `--customer-id` before the command or store it in the selected profile. |
 | A global option is rejected | Put `--profile`, `--customer-id`, `--api-version`, and `--format` before the command group. |
 | Plan works but validation fails | Read the structured Google Ads error and `request_id`; then inspect the referenced field with `gads fields describe`. |
@@ -435,6 +462,7 @@ uv sync --dev
 uv run ruff check .
 uv run ruff format --check .
 uv run pytest --cov=google_ads_cli --cov-fail-under=55
+git ls-files -z | xargs -0 uv run detect-secrets-hook --baseline .secrets.baseline
 uv build
 ```
 

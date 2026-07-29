@@ -45,7 +45,10 @@ def login(
         port=0,
         open_browser=open_browser,
         access_type="offline",
-        prompt="consent",
+        # Google may otherwise silently reuse whichever account is already active
+        # in the browser. Always show the account picker because the OAuth user,
+        # developer-token owner, manager account, and target customer can differ.
+        prompt="select_account consent",
         authorization_prompt_message="Open this URL to authorize Google Ads access:\n{url}",
         success_message="Google Ads authorization succeeded. You can close this tab.",
     )

@@ -3,6 +3,8 @@ from __future__ import annotations
 from typing import Any
 
 from google.ads.googleads.errors import GoogleAdsException
+from google.api_core.exceptions import DeadlineExceeded, GoogleAPICallError, ServiceUnavailable
+from google.auth.exceptions import RefreshError
 
 
 class CliError(RuntimeError):
@@ -40,4 +42,35 @@ def google_ads_error_details(error: GoogleAdsException) -> dict[str, Any]:
         "request_id": error.request_id,
         "message": str(error),
         "errors": items,
+    }
+
+
+def google_api_error_details(error: GoogleAPICallError) -> dict[str, Any]:
+    """Render transport/API-core failures without exposing a Python traceback."""
+    code = error.code
+    if callable(code):
+        code = code()
+    details = {
+        "type": type(error).__name__,
+        "code": str(code) if code is not None else None,
+        "message": str(error),
+    }
+    if isinstance(error, (ServiceUnavailable, DeadlineExceeded)):
+        details["help"] = (
+            "Google Ads could not be reached. Check DNS, VPN/proxy, firewall, and IPv6 "
+            "routing, then retry. On custom networks you can also try "
+            "`GRPC_DNS_RESOLVER=native gads auth test`."
+        )
+    return details
+
+
+def oauth_refresh_error_details(error: RefreshError) -> dict[str, Any]:
+    return {
+        "type": type(error).__name__,
+        "message": str(error),
+        "help": (
+            "Run `gads auth login` again and choose a Google user that can directly access "
+            "the configured manager account. If the OAuth app is in Testing, add that user "
+            "to Google Auth Platform > Audience > Test users first."
+        ),
     }
