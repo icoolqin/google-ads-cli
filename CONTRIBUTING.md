@@ -18,7 +18,7 @@ Requirements are Python 3.11+ and
 [`uv`](https://docs.astral.sh/uv/getting-started/installation/).
 
 ```bash
-git clone https://github.com/your-user/google-ads-cli.git
+git clone https://github.com/icoolqin/google-ads-cli.git
 cd google-ads-cli
 uv sync --dev
 uv run gads --version
