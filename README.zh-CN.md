@@ -37,11 +37,14 @@ API 请求。
 - 发现直接可访问账号和递归的经理账号层级
 - 执行、校验任意 GAQL，并查询可用的 Google Ads 字段
 - 输出表格、JSON、JSONL 或 CSV
-- 执行账号、Campaign、Ad Group、广告、每日表现和转化等常用报表
+- 执行账号、Campaign、Ad Group、广告、每日表现、转化、单素材评级和广告网络分布等常用报表
 - 查看 Campaign、预算、Ad Group、广告、素材和转化操作
 - 暂停、启用或移除 Campaign，修改每日预算
 - 原子化创建包含预算、定向、Ad Group、App Ad 和素材的 App Campaign
 - 上传图片素材、创建 YouTube 素材
+- 查看 App Ad 真实挂载的素材，并原位增删，无需重建 Ad Group
+- 查看账户余额、扣税后的可投净额和可投天数
+- 查看账户变更历史（谁在什么时候改了什么）
 - 查询地理位置和语言常量
 - 执行带 API 版本的 `GoogleAdsService.Mutate` YAML 清单
 - 用确定性的计划哈希保存不含密钥的 JSONL 审计记录
@@ -319,6 +322,57 @@ gads assets create-youtube VIDEO_ID --name "US Demo 15s"
 
 Google Ads 素材通常不可修改。要停止某个素材投放，请修改引用它的广告或关联。
 
+## 原位修改 App Ad 素材
+
+App Ad 在同一 Ad Group 内不能新建第二条，也不能删除，但它的**素材字段是可以更新的**。
+每改一次素材就重建 Ad Group 没有必要，而且会留下删不掉的广告。
+
+查看广告真实挂载的素材，附带槽位占用和画幅覆盖度：
+
+```bash
+gads ads assets 111222333444
+```
+
+`ad_group_ad_asset_view` **不是**真相来源：它会保留历史关联，数量可能超过广告实际挂载的素材。
+这两个命令读的是 `app_ad.*`。
+
+素材字段是整字段替换：对 `app_ad.images` 用 `update_mask` 更新时，payload 里没列出的素材会被直接丢弃。
+`set-assets` 会先读取当前素材，再把你的增删应用上去：
+
+```bash
+gads ads set-assets 111222333444 --add-video 555000111222 --remove-video 555000333444
+gads ads set-assets 111222333444 --add-video 555000111222 --validate-only
+gads ads set-assets 111222333444 --add-video 555000111222 --execute
+```
+
+`--set-image`、`--set-video`、`--set-headline`、`--set-description` 用于整体替换某个列表。
+超出每 Ad Group 上限、素材重复、移除广告上没有的素材、把视觉素材清空——这些都会在请求发出前被拦下。
+
+每次改动都会触发一次广告审核，所以请把素材变更攒成一次调用。
+
+## 查看余额与可投天数
+
+```bash
+gads billing show
+gads billing show --tax-rate 0.06
+```
+
+`account_budget` 返回的是**扣税后的可投净额**。预付充值在后台显示的是含税金额，到这里已经除过当地税率，
+所以真实可投天数比后台数字看起来的短——`--tax-rate` 会额外打印一列含税等价金额用于对账。
+可投天数默认按启用中 Campaign 的日预算之和估算，可用 `--daily-budget` 覆盖。
+
+账户赠金（"花 X 送 X"）**完全不在 API 里**，只能在后台查看。
+
+## 查看变更历史
+
+```bash
+gads changes list --days 14
+gads changes list --days 7 --resource-type CAMPAIGN_BUDGET
+gads changes list --campaign-id 123456789 --limit 500
+```
+
+`change_event` 只保留 30 天，且要求闭区间时间窗和 `LIMIT`；这个命令会自动补齐这三项。
+
 ## 使用通用 mutation 清单
 
 常见操作都有专用命令。对于 `GoogleAdsService.Mutate` 支持的其他资源，可以使用带版本的
@@ -433,6 +487,30 @@ Google 授权、developer token 访问级别或账号权限。
 
 用于正式账号前请阅读 [SECURITY.md](SECURITY.md)。账号权限、政策合规、广告花费，以及每条
 带 `--execute` 的命令，最终都由操作者负责。
+
+## 防止真实账号数据进入公共仓库
+
+本仓库是公开的，**提交进去的值即使之后删掉也会永远留在 git 历史里**，所以真正起作用的关卡在提交之前，不是 CI：
+
+```bash
+cp .private-values.example .private-values   # 填入你自己账号的真实值
+uv run pre-commit install
+```
+
+`.private-values` 已被 gitignore，永远不要提交。
+
+示例、测试、文档一律只能用合成标识符——包括客户/系列/广告组/广告/素材 ID、账户预算与结算 ID、
+付款账号、余额、邮箱、在投广告文案、内部素材命名。
+
+`detect-secrets` 在这里帮不上忙：它认的是凭证，不是业务标识符——真实客户 ID 在它眼里只是十位数字。
+`scripts/check_identifiers.py` 用两条规则补这个缺口：
+
+- **黑名单**：`.private-values` 里的值一旦出现就失败。精确，但只能抓到你想得起来写下的值。
+- **白名单**：所有 8 位以上数字、分组 ID、邮箱都必须在 `.identifier-allowlist.txt` 里。
+  **这条才是抓住"你根本没意识到它是真值"的那一层。**
+
+往白名单加一行是刻意设计成需要评审的动作——那一行正是有人该问"这个值是真的吗"的地方。
+只有明显是假的值才能进白名单；来自真实账号的数字应该替换掉，而不是加进白名单。
 
 ## API 兼容性
 

@@ -1,0 +1,27 @@
+# Copy to `.private-values` (gitignored) and list the REAL values from the
+# accounts you operate. `scripts/check_identifiers.py` hard-fails if any of them
+# appears in a tracked file.
+#
+# This file is the denylist half of the guard. It only catches values you
+# remembered to write down — the allowlist half (.identifier-allowlist.txt)
+# is what catches the ones you forgot. Keep both.
+#
+# One value per line. Lines starting with # are ignored.
+# Never commit the filled-in `.private-values` file.
+
+# --- Account identifiers ---
+# 1234567890            # customer ID
+# 12345678901           # campaign ID
+# 123456789012          # ad group ID / ad ID / asset ID
+
+# --- People ---
+# someone@example.com
+
+# --- Billing ---
+# 1234-5678-9012-3456   # payments account ID
+# 2830.19               # a real balance figure
+
+# --- Anything else that identifies the business ---
+# Live ad headlines and descriptions currently serving
+# Internal creative naming prefixes
+# Account or client names

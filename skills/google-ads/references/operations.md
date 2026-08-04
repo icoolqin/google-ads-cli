@@ -7,6 +7,8 @@
 - Manage campaigns and budgets
 - Create App Campaigns
 - Manage creative assets
+- Edit App Ad assets in place
+- Check funding and change history
 - Inspect conversions and targeting constants
 - Use generic mutation manifests
 - Diagnose failures
@@ -23,6 +25,7 @@ gads --format json adgroups list
 gads --format json ads list
 gads --format json assets list
 gads --format json conversions list
+gads --format json billing show
 ```
 
 Narrow ad groups or ads with `--campaign-id`; include removed resources only when auditing
@@ -37,6 +40,8 @@ gads reports list
 gads --format json reports run campaigns --date-range LAST_30_DAYS
 gads --format csv reports run daily --date-range 2026-07-01:2026-07-28
 gads --format json reports run conversion-actions --date-range LAST_30_DAYS
+gads --format csv reports run assets --date-range LAST_14_DAYS
+gads --format json reports run network --date-range LAST_30_DAYS
 ```
 
 Available date names include `TODAY`, `YESTERDAY`, `LAST_7_DAYS`, `LAST_14_DAYS`,
@@ -147,6 +152,50 @@ gads assets create-youtube VIDEO_ID --name "US Demo 15s"
 ```
 
 Pass the YouTube video ID, not a full URL. Assets are immutable after upload.
+
+## Edit App Ad assets in place
+
+An App Ad cannot be duplicated in its ad group or removed, but **its asset fields are
+mutable**. Do not rebuild the ad group for a creative change; that leaves undeletable ads
+behind.
+
+```bash
+gads --format json ads assets 111222333444
+```
+
+Read the ad's real assets plus orientation coverage. `ad_group_ad_asset_view` keeps
+historical associations and can report more assets than the ad carries, so it is not the
+source of truth — `ad_group_ad.ad.app_ad.*` is.
+
+```bash
+gads ads set-assets 111222333444 --add-video ASSET_ID --remove-image ASSET_ID
+gads ads set-assets 111222333444 --add-video ASSET_ID --validate-only
+gads ads set-assets 111222333444 --add-video ASSET_ID --execute
+```
+
+Asset fields are whole-field replacements; this command reads current state and applies
+the delta, so nothing is dropped by omission. `--set-image`, `--set-video`,
+`--set-headline`, and `--set-description` replace a whole list. Each write triggers an ad
+review, so batch creative edits into one call.
+
+## Check funding and change history
+
+```bash
+gads --format json billing show --tax-rate 0.06
+gads --format json changes list --days 14 --resource-type CAMPAIGN_BUDGET
+```
+
+`account_budget` reports the **net** spendable amount: a prepay top-up shown as a gross
+figure in the UI arrives already divided by the local tax rate, so runway is shorter than
+the UI suggests. `--tax-rate` prints the gross-equivalent for reconciliation.
+
+`change_event` retains 30 days and requires both a bounded window and a `LIMIT`; the
+command supplies both.
+
+**Not available through the API** — use the web UI: promotional account credits,
+SKAdNetwork reports, and Google's per-orientation Ad Strength breakdown for App ads
+(`asset_group.asset_coverage` is Performance Max only; `ad_group_ad.ad_strength` is a
+scalar that stays empty on new ads for a while).
 
 ## Inspect conversions and targeting constants
 

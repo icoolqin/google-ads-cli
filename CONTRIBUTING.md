@@ -26,6 +26,37 @@ uv run gads --version
 
 Create a branch from `main` and keep each pull request focused on one change.
 
+## Install the local gates first
+
+This repository is public. A value committed here stays in git history even after a later
+commit removes it, so the gate that matters runs **before** the commit, not in CI:
+
+```bash
+cp .private-values.example .private-values   # then fill in YOUR real account values
+uv run pre-commit install
+```
+
+`.private-values` is gitignored and must never be committed.
+
+## Never put real account data in the repository
+
+Examples, tests, and documentation must use synthetic identifiers only. This includes
+customer/campaign/ad group/ad/asset IDs, account budget and billing IDs, payments account
+numbers, balances, emails, live ad copy, and internal creative naming.
+
+`detect-secrets` does not help here — it recognizes credentials, not business identifiers.
+A real customer ID is just a ten-digit number to it. `scripts/check_identifiers.py` covers
+that gap with two rules:
+
+- **Denylist** — anything in `.private-values` fails. Precise, but only catches what someone
+  remembered to list.
+- **Allowlist** — every 8+ digit number, grouped ID, and email must appear in
+  `.identifier-allowlist.txt`. This is the rule that catches values nobody knew to list yet.
+
+Adding a line to `.identifier-allowlist.txt` is intentionally a reviewable act: that line is
+where a reviewer asks "is this value real?". Only allowlist obviously synthetic values. If a
+number came out of a live account, replace it instead.
+
 ## Checks
 
 Run all checks before opening a pull request:
@@ -35,6 +66,7 @@ uv run ruff format .
 uv run ruff check .
 uv run ruff format --check .
 uv run pytest --cov=google_ads_cli --cov-fail-under=55
+python3 scripts/check_identifiers.py
 uv build
 ```
 

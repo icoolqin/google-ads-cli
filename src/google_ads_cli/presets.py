@@ -128,6 +128,61 @@ REPORT_PRESETS = {
         ORDER BY metrics.all_conversions_value DESC
         """,
     ),
+    "assets": ReportPreset(
+        "assets",
+        "Per-asset performance labels (Best/Good/Low/Learning/Pending) and delivery.",
+        """
+        SELECT
+          campaign.name,
+          ad_group.name,
+          asset.id,
+          asset.name,
+          asset.type,
+          ad_group_ad_asset_view.field_type,
+          ad_group_ad_asset_view.performance_label,
+          ad_group_ad_asset_view.enabled,
+          metrics.impressions,
+          metrics.clicks,
+          metrics.cost_micros,
+          metrics.conversions
+        FROM ad_group_ad_asset_view
+        WHERE {date_filter}
+        ORDER BY ad_group_ad_asset_view.field_type, metrics.impressions DESC
+        """,
+    ),
+    "network": ReportPreset(
+        "network",
+        "Delivery split by ad network (Search / YouTube / Display / Discover).",
+        """
+        SELECT
+          campaign.name,
+          segments.ad_network_type,
+          metrics.impressions,
+          metrics.clicks,
+          metrics.cost_micros,
+          metrics.conversions
+        FROM campaign
+        WHERE campaign.status != 'REMOVED' AND {date_filter}
+        ORDER BY metrics.cost_micros DESC
+        """,
+    ),
+    "daily-campaign": ReportPreset(
+        "daily-campaign",
+        "Daily trend split by campaign.",
+        """
+        SELECT
+          segments.date,
+          campaign.name,
+          metrics.impressions,
+          metrics.clicks,
+          metrics.cost_micros,
+          metrics.conversions,
+          metrics.all_conversions
+        FROM campaign
+        WHERE campaign.status != 'REMOVED' AND {date_filter}
+        ORDER BY segments.date
+        """,
+    ),
 }
 
 PREDEFINED_RANGES = {

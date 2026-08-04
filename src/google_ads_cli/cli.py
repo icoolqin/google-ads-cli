@@ -27,8 +27,24 @@ from google_ads_cli.ads_client import (
     supported_api_versions,
 )
 from google_ads_cli.app_campaign import GOAL_SETTINGS, AppCampaignSpec, build_app_campaign_plan
+from google_ads_cli.appads import (
+    APP_AD_QUERY,
+    ASSET_DETAIL_QUERY,
+    coverage,
+    describe_assets,
+    parse_app_ad,
+    plan_app_ad_assets,
+)
 from google_ads_cli.assets import image_upload_plan, youtube_asset_plan
 from google_ads_cli.audit import default_audit_path, read_audit
+from google_ads_cli.billing import (
+    ACCOUNT_BUDGET_QUERY,
+    BILLING_SETUP_QUERY,
+    DAILY_BUDGET_QUERY,
+    summarize_funding,
+    total_daily_budget_units,
+)
+from google_ads_cli.changes import CHANGE_RESOURCE_TYPES, render_change_query
 from google_ads_cli.config import (
     AppConfig,
     Profile,
@@ -81,6 +97,8 @@ conversions_app = typer.Typer(no_args_is_help=True, help="Inspect conversion act
 geo_app = typer.Typer(no_args_is_help=True, help="Find location and language constants.")
 mutate_app = typer.Typer(no_args_is_help=True, help="Plan, validate, or execute generic mutates.")
 audit_app = typer.Typer(no_args_is_help=True, help="Inspect the local mutation audit trail.")
+billing_app = typer.Typer(no_args_is_help=True, help="Inspect account funding and spend runway.")
+changes_app = typer.Typer(no_args_is_help=True, help="Inspect account change history.")
 
 app.add_typer(auth_app, name="auth")
 app.add_typer(config_app, name="config")
@@ -97,6 +115,8 @@ app.add_typer(conversions_app, name="conversions")
 app.add_typer(geo_app, name="geo")
 app.add_typer(mutate_app, name="mutate")
 app.add_typer(audit_app, name="audit")
+app.add_typer(billing_app, name="billing")
+app.add_typer(changes_app, name="changes")
 
 
 def _version_callback(value: bool) -> None:
@@ -840,6 +860,164 @@ def ads_list(
     """
     session = create_session(_runtime(ctx))
     _output(ctx).render(run_gaql(session, query), title="Ads", columns=selected_fields(query))
+
+
+def _load_app_ad(ctx: typer.Context, ad_id: str):
+    if not ad_id.isdigit():
+        raise CliError("Ad ID must be numeric.")
+    session = create_session(_runtime(ctx))
+    rows = run_gaql(session, " ".join(APP_AD_QUERY.format(ad_id=ad_id).split()))
+    if not rows:
+        raise CliError(f"No ad found with ID {ad_id} in this account.")
+    return session, rows[0], parse_app_ad(rows[0])
+
+
+@ads_app.command("assets")
+def ads_assets(
+    ctx: typer.Context,
+    ad_id: str = typer.Argument(..., help="App Ad ID."),
+    show_coverage: bool = typer.Option(
+        True, "--coverage/--no-coverage", help="Summarize slot fill and orientation coverage."
+    ),
+) -> None:
+    """List the assets an App Ad actually carries, straight from `app_ad.*`.
+
+    This is the source of truth. `ad_group_ad_asset_view` keeps historical
+    associations and can report more assets than the ad really has.
+    """
+    session, row, assets = _load_app_ad(ctx, ad_id)
+    asset_ids = assets.images + assets.youtube_videos
+    details: list[dict[str, Any]] = []
+    if asset_ids:
+        details = run_gaql(
+            session,
+            " ".join(ASSET_DETAIL_QUERY.format(asset_ids=", ".join(asset_ids)).split()),
+        )
+    described = describe_assets(assets, details)
+    writer = _output(ctx)
+    if show_coverage:
+        strength = (row.get("ad_group_ad") or {}).get("ad_strength")
+        writer.render(coverage(described, strength), title=f"Ad {ad_id} · coverage")
+    writer.render(described, title=f"Ad {ad_id} · assets")
+
+
+@ads_app.command("set-assets")
+def ads_set_assets(
+    ctx: typer.Context,
+    ad_id: str = typer.Argument(..., help="App Ad ID."),
+    add_image: list[str] = typer.Option([], "--add-image", help="Asset ID to add."),
+    remove_image: list[str] = typer.Option([], "--remove-image", help="Asset ID to drop."),
+    set_image: list[str] | None = typer.Option(None, "--set-image", help="Replace the whole list."),
+    add_video: list[str] = typer.Option([], "--add-video", help="Asset ID to add."),
+    remove_video: list[str] = typer.Option([], "--remove-video", help="Asset ID to drop."),
+    set_video: list[str] | None = typer.Option(None, "--set-video", help="Replace the whole list."),
+    set_headline: list[str] | None = typer.Option(
+        None, "--set-headline", help="Replace all headlines."
+    ),
+    set_description: list[str] | None = typer.Option(
+        None, "--set-description", help="Replace all descriptions."
+    ),
+    execute: bool = typer.Option(False, "--execute"),
+    validate_only: bool = typer.Option(False, "--validate-only"),
+) -> None:
+    """Add or drop App Ad assets in place, without rebuilding the ad group.
+
+    App Ad asset fields are whole-field replacements: an `update_mask` on
+    `app_ad.images` overwrites the entire list, so anything left out is dropped.
+    This command reads the ad's current assets first and applies your delta on
+    top, so nothing disappears by omission.
+    """
+    _, _, current = _load_app_ad(ctx, ad_id)
+    customer_id = _runtime(ctx).customer_id()
+    plan, diff = plan_app_ad_assets(
+        customer_id,
+        current,
+        add_images=tuple(add_image),
+        remove_images=tuple(remove_image),
+        set_images=tuple(set_image) if set_image is not None else None,
+        add_videos=tuple(add_video),
+        remove_videos=tuple(remove_video),
+        set_videos=tuple(set_video) if set_video is not None else None,
+        set_headlines=tuple(set_headline) if set_headline is not None else None,
+        set_descriptions=tuple(set_description) if set_description is not None else None,
+    )
+    _output(ctx).render(diff, title=f"Ad {ad_id} · pending asset change")
+    _run_mutation(ctx, plan, execute=execute, validate_only=validate_only)
+
+
+@billing_app.command("show")
+def billing_show(
+    ctx: typer.Context,
+    tax_rate: float | None = typer.Option(
+        None,
+        "--tax-rate",
+        help="Show a gross-equivalent column, e.g. 0.06 for 6% VAT, to reconcile with the web UI.",
+    ),
+    daily_budget: float | None = typer.Option(
+        None,
+        "--daily-budget",
+        help="Daily spend for the runway estimate (default: sum of enabled campaigns).",
+    ),
+) -> None:
+    """Show account funding, remaining balance, and spend runway.
+
+    `account_budget` reports the NET spendable amount. A prepay top-up shown as
+    a gross figure in the web UI arrives here already divided by the local tax
+    rate, so the runway is shorter than the UI number suggests. Promotional
+    credits are not exposed by the API — check the web UI for those.
+    """
+    session = create_session(_runtime(ctx))
+    budget_rows = run_gaql(session, " ".join(ACCOUNT_BUDGET_QUERY.split()))
+    if not budget_rows:
+        raise CliError(
+            "No account_budget rows. The account may not have a completed billing setup yet."
+        )
+    currency_rows = run_gaql(session, "SELECT customer.currency_code FROM customer")
+    currency = ((currency_rows or [{}])[0].get("customer") or {}).get("currency_code")
+
+    spend = daily_budget
+    if spend is None:
+        spend = total_daily_budget_units(run_gaql(session, " ".join(DAILY_BUDGET_QUERY.split())))
+
+    writer = _output(ctx)
+    writer.render(
+        summarize_funding(
+            budget_rows,
+            daily_budget_units=spend or None,
+            tax_rate=tax_rate,
+            currency=currency,
+        ),
+        title="Account funding",
+    )
+    writer.render(run_gaql(session, " ".join(BILLING_SETUP_QUERY.split())), title="Billing setup")
+
+
+@changes_app.command("list")
+def changes_list(
+    ctx: typer.Context,
+    days: int = typer.Option(
+        14, "--days", min=1, max=30, help="Lookback window (API keeps 30 days)."
+    ),
+    limit: int = typer.Option(200, "--limit", min=1, help="change_event requires a LIMIT."),
+    resource_type: str | None = typer.Option(
+        None, "--resource-type", help=f"One of: {', '.join(CHANGE_RESOURCE_TYPES)}"
+    ),
+    campaign_id: str | None = typer.Option(None, "--campaign-id"),
+) -> None:
+    """Show who changed what, and when. Useful when delivery shifts unexpectedly."""
+    query = render_change_query(
+        customer_id=_runtime(ctx).customer_id(),
+        days=days,
+        limit=limit,
+        resource_type=resource_type,
+        campaign_id=campaign_id,
+    )
+    session = create_session(_runtime(ctx))
+    _output(ctx).render(
+        run_gaql(session, query),
+        title=f"Change history · last {days} days",
+        columns=selected_fields(query),
+    )
 
 
 @assets_app.command("list")

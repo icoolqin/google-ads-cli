@@ -1,0 +1,30 @@
+# Local gates. This repository is public and pushes happen from a personal
+# machine, so CI runs *after* the data would already be published — git history
+# keeps a leaked value even if a later commit removes it. These hooks are
+# therefore the gate that actually matters.
+#
+# Install once:  uv run pre-commit install
+repos:
+  - repo: local
+    hooks:
+      - id: no-real-identifiers
+        name: Block real account identifiers
+        entry: python3 scripts/check_identifiers.py
+        language: system
+        pass_filenames: true
+        require_serial: true
+
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+        name: Scan for credentials
+        args: ["--baseline", ".secrets.baseline"]
+        exclude: ^(\.secrets\.baseline|uv\.lock)$
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.14.5
+    hooks:
+      - id: ruff-check
+        args: ["--fix"]
+      - id: ruff-format
