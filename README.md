@@ -39,11 +39,14 @@ reviewable action.
 - Discover directly accessible accounts and recursive manager hierarchies
 - Run and validate arbitrary GAQL; discover valid Google Ads fields
 - Output tables, JSON, JSONL, or CSV
-- Run curated account, campaign, ad group, ad, daily, and conversion reports
+- Run curated account, campaign, ad group, ad, daily, conversion, per-asset, and ad-network reports
 - Inspect campaigns, budgets, ad groups, ads, assets, and conversion actions
 - Pause, enable, or remove campaigns and update daily budgets
 - Create an atomic App Campaign with budget, criteria, ad group, app ad, and assets
 - Upload image assets and create YouTube assets
+- Inspect an App Ad's real assets and edit them in place without rebuilding the ad group
+- Report account funding, tax-adjusted balance, and spend runway
+- Review account change history (who changed what, when)
 - Resolve geographic and language constants
 - Apply versioned `GoogleAdsService.Mutate` YAML manifests
 - Keep a non-secret JSONL audit trail with deterministic plan hashes
@@ -329,6 +332,63 @@ gads assets create-youtube VIDEO_ID --name "US Demo 15s"
 Google Ads assets are generally immutable. Stop one from serving by changing the ad or
 association that uses it.
 
+## Edit App Ad assets in place
+
+An App Ad cannot be duplicated within its ad group or removed, but its **asset fields can
+be updated**. Rebuilding the ad group for every creative change is unnecessary — and it
+leaves undeletable ads behind.
+
+Read what the ad actually carries, with slot fill and orientation coverage:
+
+```bash
+gads ads assets 111222333444
+```
+
+`ad_group_ad_asset_view` is *not* the source of truth: it retains historical associations
+and can report more assets than the ad has. These commands read `app_ad.*` instead.
+
+Asset fields are whole-field replacements, so an `update_mask` on `app_ad.images` drops
+anything left out of the payload. `set-assets` reads the current assets first and applies
+your delta on top:
+
+```bash
+gads ads set-assets 111222333444 --add-video 555000111222 --remove-video 555000333444
+gads ads set-assets 111222333444 --add-video 555000111222 --validate-only
+gads ads set-assets 111222333444 --add-video 555000111222 --execute
+```
+
+Use `--set-image`, `--set-video`, `--set-headline`, or `--set-description` to replace a
+whole list. Per-ad-group caps, duplicate assets, removing an asset the ad does not have,
+and stripping every visual asset are all rejected before anything reaches the API.
+
+Each change triggers an ad review, so batch creative edits into one call.
+
+## Check funding and runway
+
+```bash
+gads billing show
+gads billing show --tax-rate 0.06
+```
+
+`account_budget` reports the **net** spendable amount. A prepay top-up shown as a gross
+figure in the web UI arrives here already divided by the local tax rate, so the real
+runway is shorter than the UI number suggests — `--tax-rate` prints a gross-equivalent
+column to reconcile the two. Runway defaults to the summed daily budgets of enabled
+campaigns; override it with `--daily-budget`.
+
+Promotional credits ("spend X, get X") are not exposed by the API at all.
+
+## Review change history
+
+```bash
+gads changes list --days 14
+gads changes list --days 7 --resource-type CAMPAIGN_BUDGET
+gads changes list --campaign-id 123456789 --limit 500
+```
+
+`change_event` retains 30 days, requires a bounded date window, and requires a `LIMIT`;
+this command supplies all three.
+
 ## Use generic mutation manifests
 
 Dedicated commands cover common operations. The versioned manifest escape hatch covers
@@ -444,6 +504,8 @@ Do not paste credentials into an issue. See [SECURITY.md](SECURITY.md) for priva
 - Mutations do not add blanket retries because Google Ads mutates do not provide a universal
   idempotency key.
 - Unit tests require no Google credentials and never contact or mutate a Google Ads account.
+- A pre-commit hook blocks real account identifiers — IDs, balances, emails, live ad copy —
+  from entering this public repository. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 Review [SECURITY.md](SECURITY.md) before using the CLI in production. You remain responsible
 for account permissions, policy compliance, spend, and every command executed with

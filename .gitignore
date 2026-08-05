@@ -17,6 +17,7 @@ __pycache__/
 .venv/
 secrets/
 .secrets/
+.private-values
 google-ads.yaml
 google-ads*.yaml
 credentials.json

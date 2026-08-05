@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "google-ads-cli"
-version = "0.1.0"
+version = "0.2.0"
 description = "A safe, agent-friendly command-line interface for the Google Ads API."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -41,6 +41,7 @@ gads = "google_ads_cli.cli:main"
 [dependency-groups]
 dev = [
   "detect-secrets>=1.5,<2",
+  "pre-commit>=4.6.1",
   "pytest>=9.1.1,<10",
   "pytest-cov>=6,<8",
   "ruff>=0.11,<1",

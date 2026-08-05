@@ -1,0 +1,32 @@
+# Synthetic identifiers approved for docs, tests, and examples.
+#
+# `scripts/check_identifiers.py` fails on any 8+ digit number, grouped ID, or
+# email address that is not listed here. Adding a line is deliberately a
+# reviewable act: that is the moment to ask "is this value real?".
+#
+# Rule of thumb: only obviously-fake values belong here. If a number came out of
+# a live account, do not allowlist it — replace it.
+
+# --- Placeholder account identifiers used across README, skill docs, tests ---
+1234567890
+123456789
+111222333444
+555000111222
+555000333444
+
+# --- Emails ---
+noreply@anthropic.com
+
+# --- Placeholders inherited from existing docs/tests ---
+1111111111
+2222222222
+3333333333
+987654321
+000000000
+8888888888
+
+# --- Synthetic micros amounts used in tests (value * 1_000_000) ---
+1000000000
+400000000
+150000000
+50000000

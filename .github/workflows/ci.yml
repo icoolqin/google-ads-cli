@@ -48,6 +48,13 @@ jobs:
         if: matrix.python-version == '3.14'
         run: git ls-files -z | xargs -0 uv run --frozen detect-secrets-hook --baseline .secrets.baseline
 
+      # Backstop only. detect-secrets knows credentials, not business
+      # identifiers, and CI runs after a push has already made the repo public.
+      # The pre-commit hook is the gate that prevents publication.
+      - name: Scan tracked files for real account identifiers
+        if: matrix.python-version == '3.14'
+        run: python3 scripts/check_identifiers.py
+
       - name: Test
         run: uv run --frozen pytest --cov=google_ads_cli --cov-report=term-missing --cov-fail-under=55
 
